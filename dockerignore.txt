@@ -1,0 +1,18 @@
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# If using a virtual environment directory
+.venv/
+
+# If you store environment variables locally
+.env
+
+# Mac OS metadata
+.DS_Store
+
+# Docker config (optional)
+Dockerfile
+docker-compose.yml

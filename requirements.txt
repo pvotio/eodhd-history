@@ -1,0 +1,5 @@
+pyodbc
+sqlalchemy
+pandas
+requests
+azure-identity
