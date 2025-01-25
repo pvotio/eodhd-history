@@ -13,6 +13,7 @@ from azure.identity import DefaultAzureCredential
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time  # <-- For sleep/backoff
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,8 +62,13 @@ def get_tickers(engine, ticker_sql):
         logging.error(f"Error fetching tickers from the database: {e}")
         sys.exit(1)
 
-def fetch_eod_data(ticker, from_date, to_date, api_token):
-    """Fetch daily OHLC data from EODHD for the given ticker & date range."""
+def fetch_eod_data(ticker, from_date, to_date, api_token, max_retries=3):
+    """
+    Fetch daily OHLC data from EODHD for the given ticker & date range,
+    retrying up to 'max_retries' times if a 429 (Too Many Requests) or
+    certain other errors occur. We sleep for 5 seconds when we get a 429
+    before retrying.
+    """
     url = f"https://eodhd.com/api/eod/{ticker}"
     params = {
         "from": from_date,
@@ -71,13 +77,44 @@ def fetch_eod_data(ticker, from_date, to_date, api_token):
         "api_token": api_token,
         "fmt": "json"
     }
-    try:
-        resp = requests.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()  # Typically a list of OHLC objects
-    except Exception as e:
-        logging.error(f"Error fetching EOD data for ticker {ticker}: {e}")
-        return []
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, params=params)
+            resp.raise_for_status()  # Raises HTTPError if status != 200
+            return resp.json()       # Typically a list of OHLC objects
+
+        except requests.exceptions.HTTPError as http_err:
+            status_code = http_err.response.status_code
+            if status_code == 429:
+                # Too Many Requests
+                if attempt < max_retries:
+                    logging.warning(
+                        f"Received 429 Too Many Requests for ticker {ticker} "
+                        f"(Attempt {attempt}/{max_retries}). Sleeping 5s before retry..."
+                    )
+                    time.sleep(5)
+                else:
+                    logging.error(
+                        f"Received 429 for ticker {ticker} on final attempt. Aborting."
+                    )
+                    return []
+            else:
+                logging.error(
+                    f"HTTP error for ticker {ticker} (Attempt {attempt}/{max_retries}): {http_err}"
+                )
+                # If you only want to retry on 429, break immediately for other errors
+                break
+
+        except Exception as e:
+            logging.error(
+                f"Error fetching EOD data for ticker {ticker} (Attempt {attempt}/{max_retries}): {e}"
+            )
+            # Decide whether to keep retrying or not. Here, we break on first non-HTTPError.
+            break
+
+    # If we exit the loop, either used up all retries or had a non-retriable error
+    return []
 
 def main():
     # --- 1) Load environment variables ---
@@ -155,8 +192,8 @@ def main():
     # 8) Define a function that fetches + inserts *one* ticker at a time
     def fetch_and_insert_ticker(ticker):
         """Fetch data for a single ticker, and insert in chunks to save memory."""
-        # (A) fetch data
-        raw_data = fetch_eod_data(ticker, from_date, to_date, api_token)
+        # (A) fetch data with retry logic
+        raw_data = fetch_eod_data(ticker, from_date, to_date, api_token, max_retries=3)
         if not raw_data:
             return 0  # no data or error
 
