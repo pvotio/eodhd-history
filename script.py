@@ -204,7 +204,7 @@ def main():
             records.append({
                 "ext2_ticker": ticker,
                 "timestamp_created_utc": now_utc,
-                "date": row.get("date"),
+                "update_date": row.get("date"),
                 "open": row.get("open"),
                 "high": row.get("high"),
                 "low": row.get("low"),
@@ -236,7 +236,7 @@ def main():
                         chunk_df[[
                             "ext2_ticker",
                             "timestamp_created_utc",
-                            "date",
+                            "update_date",
                             "open",
                             "high",
                             "low",
