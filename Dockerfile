@@ -1,5 +1,5 @@
 # Start with a slim Python 3.9 base image
-FROM python:3.13.2-slim-bullseye
+FROM python:3.13.6-slim-bullseye
 
 # Install system packages, including ODBC Driver 18 for SQL Server
 # (Adjust apt packages for your distro if needed)
