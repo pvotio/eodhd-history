@@ -1,19 +1,30 @@
-# Start with a slim Python 3.9 base image
-FROM python:3.13.6-slim-bullseye
+# Latest Python 3.13 slim for Debian 12 (Bookworm)
+FROM python:3.13.7-slim-bookworm
 
-# Install system packages, including ODBC Driver 18 for SQL Server
-# (Adjust apt packages for your distro if needed)
-RUN apt-get update && apt-get install -y curl gnupg2 apt-transport-https \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev \
-    && rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Set a working directory
+# Install system packages + MS ODBC 18 (Bookworm repo, signed-by keyring)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl \
+      gnupg \
+      ca-certificates \
+      unixodbc \
+      unixodbc-dev \
+ && mkdir -p /usr/share/keyrings \
+ && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg \
+ && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/repos/microsoft-debian-bookworm-prod bookworm main" \
+    > /etc/apt/sources.list.d/mssql-release.list \
+ && apt-get update \
+ && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Set work directory
 WORKDIR /app
 
-# Copy and install Python dependencies
+# Install Python dependencies first (better layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
